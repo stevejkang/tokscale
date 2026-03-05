@@ -119,6 +119,7 @@ pub struct App {
     pub max_visible_items: usize,
 
     pub selected_graph_cell: Option<(usize, usize)>,
+    pub stats_breakdown_total_lines: usize,
 
     pub auto_refresh: bool,
     pub auto_refresh_interval: Duration,
@@ -207,6 +208,7 @@ impl App {
             selected_index: 0,
             max_visible_items: 20,
             selected_graph_cell: None,
+            stats_breakdown_total_lines: 0,
             auto_refresh,
             auto_refresh_interval,
             last_refresh: Instant::now(),
@@ -348,7 +350,12 @@ impl App {
                 }
             }
             KeyCode::Esc => {
-                self.selected_graph_cell = None;
+                if self.selected_graph_cell.is_some() {
+                    self.selected_graph_cell = None;
+                    self.stats_breakdown_total_lines = 0;
+                    self.selected_index = 0;
+                    self.scroll_offset = 0;
+                }
             }
             _ => {}
         }
@@ -381,6 +388,9 @@ impl App {
                         }
                         ClickAction::GraphCell { week, day } => {
                             self.selected_graph_cell = Some((*week, *day));
+                            self.stats_breakdown_total_lines = 0;
+                            self.selected_index = 0;
+                            self.scroll_offset = 0;
                         }
                     }
                     break;
@@ -397,8 +407,13 @@ impl App {
         self.clamp_selection();
     }
 
-    /// Clamp selection and scroll offset to valid bounds after data/resize changes
+    /// Clamp selection and scroll offset to valid bounds after data/resize changes.
+    /// Stats breakdown is skipped here because `render_breakdown_panel` clamps
+    /// with the actual panel height (not the full-terminal `max_visible_items`).
     fn clamp_selection(&mut self) {
+        if self.current_tab == Tab::Stats && self.selected_graph_cell.is_some() {
+            return;
+        }
         let len = self.get_current_list_len();
         if len == 0 {
             self.selected_index = 0;
@@ -422,9 +437,25 @@ impl App {
         self.scroll_offset = 0;
         self.selected_index = 0;
         self.selected_graph_cell = None;
+        self.stats_breakdown_total_lines = 0;
     }
 
     fn move_selection_up(&mut self) {
+        if self.current_tab == Tab::Stats && self.selected_graph_cell.is_some() {
+            let len = self.get_current_list_len();
+            if len == 0 {
+                return;
+            }
+
+            if self.selected_index > 0 {
+                self.selected_index -= 1;
+                if self.selected_index < self.scroll_offset {
+                    self.scroll_offset = self.selected_index;
+                }
+            }
+            return;
+        }
+
         let len = self.get_current_list_len();
         if len == 0 {
             return;
@@ -441,6 +472,22 @@ impl App {
     }
 
     fn move_selection_down(&mut self) {
+        if self.current_tab == Tab::Stats && self.selected_graph_cell.is_some() {
+            let len = self.get_current_list_len();
+            if len == 0 {
+                return;
+            }
+
+            let max_index = len - 1;
+            if self.selected_index < max_index {
+                self.selected_index += 1;
+                if self.selected_index >= self.scroll_offset + self.max_visible_items {
+                    self.scroll_offset = self.selected_index - self.max_visible_items + 1;
+                }
+            }
+            return;
+        }
+
         let len = self.get_current_list_len();
         if len == 0 {
             return;
@@ -461,7 +508,13 @@ impl App {
         match self.current_tab {
             Tab::Overview | Tab::Models => self.data.models.len(),
             Tab::Daily => self.data.daily.len(),
-            Tab::Stats => 0,
+            Tab::Stats => {
+                if self.selected_graph_cell.is_some() {
+                    self.stats_breakdown_total_lines
+                } else {
+                    0
+                }
+            }
         }
     }
 
