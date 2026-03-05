@@ -562,8 +562,14 @@ fn render_breakdown_panel(frame: &mut Frame, app: &mut App, area: Rect) {
     app.max_visible_items = visible_height;
     app.stats_breakdown_total_lines = lines.len();
 
-    let max_scroll = lines.len().saturating_sub(visible_height);
-    app.scroll_offset = app.scroll_offset.min(max_scroll);
+    if lines.is_empty() {
+        app.selected_index = 0;
+        app.scroll_offset = 0;
+    } else {
+        app.selected_index = app.selected_index.min(lines.len() - 1);
+        let max_scroll = lines.len().saturating_sub(visible_height);
+        app.scroll_offset = app.scroll_offset.min(max_scroll);
+    }
 
     let paragraph = Paragraph::new(lines).scroll((app.scroll_offset as u16, 0));
     frame.render_widget(paragraph, inner);
