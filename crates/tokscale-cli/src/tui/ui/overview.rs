@@ -42,6 +42,14 @@ fn overview_color_key<'a>(group_by: &GroupBy, model: &'a str) -> &'a str {
 }
 
 pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
+    // Pre-fill entire overview area with theme background so that chart and
+    // legend cells (which only set fg via direct buffer writes) don't fall
+    // through to the terminal's default background color.
+    frame.render_widget(
+        Block::default().style(Style::default().bg(app.theme.background)),
+        area,
+    );
+
     let safe_height = area.height.max(12) as usize;
     let chart_height = (safe_height as f64 * 0.35).floor().max(5.0) as u16;
     let legend_height = 1u16;
