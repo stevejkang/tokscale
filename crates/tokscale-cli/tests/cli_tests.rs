@@ -256,6 +256,7 @@ fn create_conflicting_codex_fixture_dir() -> TempDir {
 fn cmd_with_home(tmp: &Path) -> Command {
     let mut cmd = cargo_bin_cmd!("tokscale");
     cmd.env("HOME", tmp)
+        .env("XDG_CONFIG_HOME", tmp.join(".config"))
         .env("XDG_DATA_HOME", tmp.join(".local/share"))
         .env("XDG_CACHE_HOME", tmp.join(".cache"))
         .env("TOKSCALE_PRICING_CACHE_ONLY", "1");
@@ -265,6 +266,7 @@ fn cmd_with_home(tmp: &Path) -> Command {
 fn cmd_with_conflicting_env(tmp: &Path) -> Command {
     let mut cmd = cargo_bin_cmd!("tokscale");
     cmd.env("HOME", tmp)
+        .env("XDG_CONFIG_HOME", tmp.join(".config"))
         .env("XDG_DATA_HOME", tmp.join(".local/share"))
         .env("XDG_CACHE_HOME", tmp.join(".cache"));
     cmd
