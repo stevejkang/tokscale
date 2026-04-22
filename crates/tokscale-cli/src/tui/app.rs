@@ -28,7 +28,7 @@ pub struct TuiConfig {
     pub initial_tab: Option<Tab>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Tab {
     Overview,
     Models,
@@ -147,6 +147,7 @@ pub struct App {
     pub group_by: Rc<RefCell<tokscale_core::GroupBy>>,
     pub sort_field: SortField,
     pub sort_direction: SortDirection,
+    tab_sort_state: HashMap<Tab, (SortField, SortDirection)>,
     pub chart_granularity: ChartGranularity,
 
     pub scroll_offset: usize,
@@ -243,6 +244,7 @@ impl App {
             group_by: Rc::new(RefCell::new(tokscale_core::GroupBy::Model)),
             sort_field: SortField::Cost,
             sort_direction: SortDirection::Descending,
+            tab_sort_state: HashMap::new(),
             chart_granularity: ChartGranularity::default(),
             scroll_offset: 0,
             selected_index: 0,
@@ -364,23 +366,23 @@ impl App {
                 return true;
             }
             KeyCode::Tab => {
-                self.current_tab = self.current_tab.next();
-                self.apply_tab_sort_defaults();
+                let next = self.current_tab.next();
+                self.switch_tab(next);
                 self.reset_selection();
             }
             KeyCode::BackTab => {
-                self.current_tab = self.current_tab.prev();
-                self.apply_tab_sort_defaults();
+                let prev = self.current_tab.prev();
+                self.switch_tab(prev);
                 self.reset_selection();
             }
             KeyCode::Left => {
-                self.current_tab = self.current_tab.prev();
-                self.apply_tab_sort_defaults();
+                let prev = self.current_tab.prev();
+                self.switch_tab(prev);
                 self.reset_selection();
             }
             KeyCode::Right => {
-                self.current_tab = self.current_tab.next();
-                self.apply_tab_sort_defaults();
+                let next = self.current_tab.next();
+                self.switch_tab(next);
                 self.reset_selection();
             }
             KeyCode::Up => {
@@ -490,7 +492,7 @@ impl App {
                     {
                         match &area.action {
                             ClickAction::Tab(tab) => {
-                                self.current_tab = *tab;
+                                self.switch_tab(*tab);
                                 self.reset_selection();
                             }
                             ClickAction::Sort(field) => {
@@ -558,17 +560,23 @@ impl App {
         self.stats_breakdown_total_lines = 0;
     }
 
-    /// Apply per-tab sort defaults when switching tabs.
-    /// Must be called AFTER updating `self.current_tab`, before `reset_selection`.
-    fn apply_tab_sort_defaults(&mut self) {
-        // Hourly tab shows time-ordered data by default; other tabs keep cost sort.
-        if self.current_tab == Tab::Hourly {
-            self.sort_field = SortField::Date;
-            self.sort_direction = SortDirection::Descending;
-        } else {
-            self.sort_field = SortField::Cost;
-            self.sort_direction = SortDirection::Descending;
-        }
+    fn switch_tab(&mut self, target: Tab) {
+        self.tab_sort_state
+            .insert(self.current_tab, (self.sort_field, self.sort_direction));
+
+        self.current_tab = target;
+
+        let (field, dir) =
+            self.tab_sort_state
+                .get(&target)
+                .copied()
+                .unwrap_or(if target == Tab::Hourly {
+                    (SortField::Date, SortDirection::Descending)
+                } else {
+                    (SortField::Cost, SortDirection::Descending)
+                });
+        self.sort_field = field;
+        self.sort_direction = dir;
     }
 
     fn move_selection_up(&mut self) {
@@ -1542,18 +1550,33 @@ mod tests {
     }
 
     #[test]
-    fn test_sort_defaults_restore_after_hourly() {
+    fn test_switch_tab_restores_hourly_date_default() {
         let mut app = make_app();
-
         assert_eq!(app.sort_field, SortField::Cost);
 
-        app.current_tab = Tab::Hourly;
-        app.apply_tab_sort_defaults();
+        app.switch_tab(Tab::Hourly);
         assert_eq!(app.sort_field, SortField::Date);
+        assert_eq!(app.sort_direction, SortDirection::Descending);
 
-        app.current_tab = Tab::Models;
-        app.apply_tab_sort_defaults();
+        app.switch_tab(Tab::Models);
         assert_eq!(app.sort_field, SortField::Cost);
+        assert_eq!(app.sort_direction, SortDirection::Descending);
+    }
+
+    #[test]
+    fn test_switch_tab_preserves_user_sort() {
+        let mut app = make_app();
+        app.switch_tab(Tab::Models);
+
+        app.set_sort(SortField::Tokens);
+        assert_eq!(app.sort_field, SortField::Tokens);
+        assert_eq!(app.sort_direction, SortDirection::Descending);
+
+        app.switch_tab(Tab::Daily);
+        assert_eq!(app.sort_field, SortField::Cost);
+
+        app.switch_tab(Tab::Models);
+        assert_eq!(app.sort_field, SortField::Tokens);
         assert_eq!(app.sort_direction, SortDirection::Descending);
     }
 
